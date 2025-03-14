@@ -43,7 +43,9 @@ class JsonDB {
     }
 
     setGuildConfig(guildId, config) {
-        this.storage.set(guildId, config);
+        // Merge mit existierenden Einstellungen
+        const existingConfig = this.getGuildConfig(guildId);
+        this.storage.set(guildId, { ...existingConfig, ...config });
         this.saveToFile();
     }
 
@@ -51,6 +53,9 @@ class JsonDB {
         return this.storage.get(guildId) || {
             absenzeChannel: null,
             requiredRole: null,
+            helpChannel: null,
+            helpPingRole: null,
+            infoText: null,
             modules: ['abmelden']
         };
     }

@@ -1,1 +1,12 @@
-{}
+{
+  "1336009812068274196": {
+    "absenzeChannel": "1336009812068274199",
+    "requiredRole": "1336011232401948813",
+    "modules": [
+      "abmelden"
+    ],
+    "helpChannel": "1336009812068274199",
+    "helpPingRole": null,
+    "infoText": "Test"
+  }
+}

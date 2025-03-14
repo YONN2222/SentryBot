@@ -8,7 +8,6 @@ module.exports = {
         .setDescription('Konfiguriere den Bot für deinen Server'),
 
     async execute(interaction) {
-        // Check if user has admin permissions
         if (!interaction.member.permissions.has('ADMINISTRATOR')) {
             return await interaction.reply({
                 content: '⚠️ Du benötigst Administrator-Rechte für diesen Befehl!',
@@ -16,7 +15,8 @@ module.exports = {
             });
         }
 
-        const row = new ActionRowBuilder()
+        // Haupt-Menü erstellen
+        const mainMenu = new ActionRowBuilder()
             .addComponents(
                 new StringSelectMenuBuilder()
                     .setCustomId('module_select')
@@ -29,17 +29,33 @@ module.exports = {
                             emoji: '📝'
                         },
                         {
-                            label: 'Startseite',
-                            description: 'Zurück zur Startseite',
-                            value: 'start',
-                            emoji: '🏠'
+                            label: 'Hilfe',
+                            description: 'Konfiguriere das Hilfe-Modul',
+                            value: 'help',
+                            emoji: '❓'
                         },
+                        {
+                            label: 'Info',
+                            description: 'Konfiguriere den Info-Text',
+                            value: 'info',
+                            emoji: 'ℹ️'
+                        }
                     ]),
+            );
+
+        // Zurück-Button erstellen
+        const backButton = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('back_to_main')
+                    .setLabel('Zurück zur Übersicht')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('🏠')
             );
 
         const response = await interaction.reply({
             content: '## 🛠️ Willkommen im Setup!\nWähle ein Modul zur Konfiguration:',
-            components: [row],
+            components: [mainMenu],
             ephemeral: true,
             fetchReply: true
         });
@@ -57,29 +73,61 @@ module.exports = {
                 return;
             }
 
+            const guildConfig = db.getGuildConfig(interaction.guildId);
+
             if (i.customId === 'module_select') {
-                if (i.values[0] === 'abmelden') {
-                    const configButton = new ButtonBuilder()
-                        .setCustomId('configure_abmelden')
-                        .setLabel('Konfigurieren')
-                        .setStyle(ButtonStyle.Primary)
-                        .setEmoji('⚙️');
+                switch(i.values[0]) {
+                    case 'abmelden':
+                        const configButton = new ButtonBuilder()
+                            .setCustomId('configure_abmelden')
+                            .setLabel('Konfigurieren')
+                            .setStyle(ButtonStyle.Primary)
+                            .setEmoji('⚙️');
 
-                    const actionRow = new ActionRowBuilder().addComponents(configButton);
+                        const actionRow = new ActionRowBuilder().addComponents(configButton);
 
-                    await i.update({
-                        content: '## 📝 Abmelden Modul\nHier kannst du den Channel und die erforderliche Rolle für das Abmelden festlegen.',
-                        components: [actionRow],
-                    });
-                } else if (i.values[0] === 'start') {
-                    await i.update({
-                        content: '## 🛠️ Willkommen im Setup!\nWähle ein Modul zur Konfiguration:',
-                        components: [row],
-                    });
+                        await i.update({
+                            content: '## 📝 Abmelden Modul\nHier kannst du den Channel und die erforderliche Rolle für das Abmelden festlegen.',
+                            components: [actionRow, backButton],
+                        });
+                        break;
+
+                    case 'help':
+                        const helpConfigButton = new ButtonBuilder()
+                            .setCustomId('configure_help')
+                            .setLabel('Konfigurieren')
+                            .setStyle(ButtonStyle.Primary)
+                            .setEmoji('⚙️');
+
+                        const helpActionRow = new ActionRowBuilder().addComponents(helpConfigButton);
+
+                        await i.update({
+                            content: '## ❓ Hilfe Modul\nHier kannst du den Support-Channel und optional eine Ping-Rolle festlegen.',
+                            components: [helpActionRow, backButton],
+                        });
+                        break;
+
+                    case 'info':
+                        const infoConfigButton = new ButtonBuilder()
+                            .setCustomId('configure_info')
+                            .setLabel('Konfigurieren')
+                            .setStyle(ButtonStyle.Primary)
+                            .setEmoji('⚙️');
+
+                        const infoActionRow = new ActionRowBuilder().addComponents(infoConfigButton);
+
+                        await i.update({
+                            content: '## ℹ️ Info Modul\nHier kannst du den Text festlegen, der bei /info angezeigt wird.',
+                            components: [infoActionRow, backButton],
+                        });
+                        break;
                 }
+            } else if (i.customId === 'back_to_main') {
+                await i.update({
+                    content: '## 🛠️ Willkommen im Setup!\nWähle ein Modul zur Konfiguration:',
+                    components: [mainMenu],
+                });
             } else if (i.customId === 'configure_abmelden') {
-                const guildConfig = db.getGuildConfig(interaction.guildId);
-
                 const modal = new ModalBuilder()
                     .setCustomId('abmelden_config_modal')
                     .setTitle('Abmelden Konfiguration');
@@ -101,6 +149,48 @@ module.exports = {
                 modal.addComponents(
                     new ActionRowBuilder().addComponents(channelInput),
                     new ActionRowBuilder().addComponents(roleInput)
+                );
+
+                await i.showModal(modal);
+            } else if (i.customId === 'configure_help') {
+                const modal = new ModalBuilder()
+                    .setCustomId('help_config_modal')
+                    .setTitle('Hilfe Konfiguration');
+
+                const channelInput = new TextInputBuilder()
+                    .setCustomId('help_channel_id')
+                    .setLabel('Channel ID für Hilfe-Anfragen')
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(true)
+                    .setValue(guildConfig.helpChannel || '');
+
+                const roleInput = new TextInputBuilder()
+                    .setCustomId('help_role_id')
+                    .setLabel('Ping-Rollen ID (Optional)')
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(false)
+                    .setValue(guildConfig.helpPingRole || '');
+
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(channelInput),
+                    new ActionRowBuilder().addComponents(roleInput)
+                );
+
+                await i.showModal(modal);
+            } else if (i.customId === 'configure_info') {
+                const modal = new ModalBuilder()
+                    .setCustomId('info_config_modal')
+                    .setTitle('Info Konfiguration');
+
+                const infoInput = new TextInputBuilder()
+                    .setCustomId('info_text')
+                    .setLabel('Info Text (Markdown erlaubt)')
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setRequired(true)
+                    .setValue(guildConfig.infoText || '');
+
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(infoInput)
                 );
 
                 await i.showModal(modal);
