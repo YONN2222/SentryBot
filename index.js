@@ -6,25 +6,20 @@ const path = require('path');
 const db = require('./config/jsonDB');
 const { ModalBuilder, ActionRowBuilder, TextInputBuilder, TextInputStyle, EmbedBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
-// Improved environment variable access and validation
+// Environment variables
 const token = process.env['DISCORD_TOKEN'];
 const clientId = process.env['CLIENT_ID'];
 
-// Validate environment variables
-if (!token) {
-    console.error('DISCORD_TOKEN is not set in environment variables');
-    process.exit(1);
-}
-
-if (!clientId) {
-    console.error('CLIENT_ID is not set in environment variables');
+if (!token || !clientId) {
+    console.error('Missing required environment variables');
     process.exit(1);
 }
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
     ]
 });
 
@@ -46,13 +41,10 @@ const rest = new REST({ version: '9' }).setToken(token);
 (async () => {
     try {
         console.log('Started refreshing application (/) commands.');
-        console.log(`Using Client ID: ${clientId}`);
-
         await rest.put(
             Routes.applicationCommands(clientId),
             { body: commands },
         );
-
         console.log('Successfully reloaded application (/) commands.');
     } catch (error) {
         console.error('Error during command registration:', error);
@@ -63,22 +55,150 @@ client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}`);
 });
 
-// Handle all interactions
+// Handle interactions
 client.on('interactionCreate', async interaction => {
     try {
         if (interaction.isCommand()) {
             const command = client.commands.get(interaction.commandName);
             if (!command) return;
-
             await command.execute(interaction);
-        } else if (interaction.isModalSubmit() && interaction.customId.startsWith('solved_help_modal_')) {
+        }
+        // Handle user reply button
+        else if (interaction.isButton() && interaction.customId.startsWith('help_reply_')) {
+            const modal = new ModalBuilder()
+                .setCustomId(`help_user_reply_modal_${interaction.message.id}`)
+                .setTitle('Antwort verfassen');
+
+            const responseInput = new TextInputBuilder()
+                .setCustomId('response')
+                .setLabel('Deine Antwort')
+                .setStyle(TextInputStyle.Paragraph)
+                .setRequired(true);
+
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(responseInput)
+            );
+
+            await interaction.showModal(modal);
+        }
+        // Handle user reply submission
+        else if (interaction.isModalSubmit() && interaction.customId.startsWith('help_user_reply_modal_')) {
+            const response = interaction.fields.getTextInputValue('response');
+            console.log('Debug - Got user response:', response);
+            console.log('Debug - User ID:', interaction.user.id);
+
+            let threadFound = false;
+            const guilds = client.guilds.cache;
+
+            // Durchsuche alle Server
+            for (const [, guild] of guilds) {
+                const config = db.getGuildConfig(guild.id);
+                if (!config.helpChannel) continue;
+
+                const channel = await guild.channels.fetch(config.helpChannel);
+                if (!channel) continue;
+
+                console.log('Debug - Checking help channel in guild:', guild.name);
+
+                // Aktive und archivierte Threads durchsuchen
+                const activeThreads = await channel.threads.fetchActive();
+                const archivedThreads = await channel.threads.fetchArchived();
+                const allThreads = [...activeThreads.threads.values(), ...archivedThreads.threads.values()];
+
+                for (const thread of allThreads) {
+                    try {
+                        console.log('Debug - Checking thread:', thread.name);
+
+                        const starterMessage = await thread.fetchStarterMessage();
+                        if (!starterMessage) {
+                            console.log('Debug - No starter message found');
+                            continue;
+                        }
+
+                        const embed = starterMessage.embeds[0];
+                        if (!embed) {
+                            console.log('Debug - No embed found in starter message');
+                            continue;
+                        }
+
+                        // Finde das @user Feld
+                        const userIdField = embed.fields.find(f => f.name === '@user');
+                        console.log('Debug - Found user ID field:', userIdField);
+
+                        if (!userIdField || userIdField.value !== interaction.user.id) {
+                            console.log('Debug - User ID mismatch or not found');
+                            console.log('Debug - Expected:', interaction.user.id);
+                            console.log('Debug - Found:', userIdField?.value);
+                            continue;
+                        }
+
+                        console.log('Debug - Found matching thread, sending response');
+
+                        // Create response embed
+                        const responseEmbed = new EmbedBuilder()
+                            .setColor('#0099ff')
+                            .setDescription('## ↩️ Antwort vom Nutzer')
+                            .setAuthor({
+                                name: interaction.user.username,
+                                iconURL: interaction.user.displayAvatarURL()
+                            })
+                            .addFields(
+                                { name: '📝 Nachricht', value: response }
+                            )
+                            .setTimestamp()
+                            .setFooter({ text: '💬 Nutzer-Antwort' });
+
+                        await thread.send({ embeds: [responseEmbed] });
+                        threadFound = true;
+
+                        await interaction.reply({
+                            content: '✅ Deine Antwort wurde erfolgreich gesendet!',
+                            ephemeral: true
+                        });
+                        break;
+                    } catch (error) {
+                        console.error('Error processing thread:', error);
+                        console.error('Error stack:', error.stack);
+                    }
+                }
+                if (threadFound) break;
+            }
+
+            if (!threadFound) {
+                console.log('Debug - No matching thread found for user');
+                await interaction.reply({
+                    content: '❌ Konnte den zugehörigen Thread nicht finden.',
+                    ephemeral: true
+                });
+            }
+        }
+        // Handle "mark as solved" button
+        else if (interaction.isButton() && interaction.customId.startsWith('solved_help_')) {
+            const userId = interaction.customId.replace('solved_help_', '');
+            const modal = new ModalBuilder()
+                .setCustomId(`solved_help_modal_${userId}`)
+                .setTitle('Hilfe-Anfrage lösen');
+
+            const reasonInput = new TextInputBuilder()
+                .setCustomId('reason')
+                .setLabel('Grund für die Lösung')
+                .setStyle(TextInputStyle.Paragraph)
+                .setRequired(true);
+
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(reasonInput)
+            );
+
+            await interaction.showModal(modal);
+        }
+        // Handle "mark as solved" submission
+        else if (interaction.isModalSubmit() && interaction.customId.startsWith('solved_help_modal_')) {
             const userId = interaction.customId.replace('solved_help_modal_', '');
             const reason = interaction.fields.getTextInputValue('reason');
-            const message = interaction.message;
 
             try {
                 const user = await client.users.fetch(userId);
-                const embed = new EmbedBuilder()
+                const solvedEmbed = new EmbedBuilder()
                     .setColor('#00ff00')
                     .setDescription('## ✅ Deine Hilfe-Anfrage wurde gelöst')
                     .addFields(
@@ -88,20 +208,21 @@ client.on('interactionCreate', async interaction => {
                     .setTimestamp()
                     .setFooter({ text: '✅ Hilfe-Anfrage gelöst' });
 
-                await user.send({ embeds: [embed] });
+                await user.send({ embeds: [solvedEmbed] });
 
-                // Original message updaten
+                // Update original message
+                const message = interaction.message;
                 const originalEmbed = message.embeds[0];
                 originalEmbed.data.description = '## ✅ Hilfe-Anfrage gelöst';
                 originalEmbed.data.color = 0x00ff00;
-                originalEmbed.data.fields.push({ 
-                    name: '✨ Lösung', 
-                    value: `Gelöst von ${interaction.user.username}\nGrund: ${reason}` 
+                originalEmbed.data.fields.push({
+                    name: '✨ Lösung',
+                    value: `Gelöst von ${interaction.user.username}\nGrund: ${reason}`
                 });
 
-                await message.edit({ 
+                await message.edit({
                     embeds: [originalEmbed],
-                    components: [] 
+                    components: []
                 });
 
                 const thread = message.thread;
@@ -123,174 +244,6 @@ client.on('interactionCreate', async interaction => {
                     ephemeral: true
                 });
             }
-        } else if (interaction.isButton() && interaction.customId.startsWith('help_reply_')) {
-            const messageId = interaction.customId.replace('help_reply_', '');
-
-            const modal = new ModalBuilder()
-                .setCustomId(`help_user_reply_modal_${messageId}`)
-                .setTitle('Antwort verfassen');
-
-            const responseInput = new TextInputBuilder()
-                .setCustomId('response')
-                .setLabel('Deine Antwort')
-                .setStyle(TextInputStyle.Paragraph)
-                .setRequired(true);
-
-            modal.addComponents(
-                new ActionRowBuilder().addComponents(responseInput)
-            );
-
-            await interaction.showModal(modal);
-        } else if (interaction.isModalSubmit() && interaction.customId.startsWith('help_user_reply_modal_')) {
-            const messageId = interaction.customId.replace('help_user_reply_modal_', '');
-            const response = interaction.fields.getTextInputValue('response');
-
-            // Find all help threads
-            const guilds = client.guilds.cache;
-            for (const [, guild] of guilds) {
-                const config = db.getGuildConfig(guild.id);
-                if (!config.helpChannel) continue;
-
-                const channel = await guild.channels.fetch(config.helpChannel);
-                if (!channel) continue;
-
-                // Search for the user's help thread
-                const threads = await channel.threads.fetch();
-                for (const [, thread] of threads) {
-                    const starterMessage = await thread.fetchStarterMessage();
-                    if (!starterMessage) continue;
-                    const embed = starterMessage.embeds[0];
-                    if (!embed?.author?.name) continue;
-                    if (embed.author.name !== interaction.user.username) continue;
-
-                    // Send the response to the thread
-                    const responseEmbed = new EmbedBuilder()
-                        .setColor('#0099ff')
-                        .setDescription('## ↩️ Antwort vom Nutzer')
-                        .setAuthor({
-                            name: interaction.user.username,
-                            iconURL: interaction.user.displayAvatarURL()
-                        })
-                        .addFields(
-                            { name: '📝 Nachricht', value: response },
-                            { name: '👤 Nutzer', value: interaction.user.username }
-                        )
-                        .setTimestamp()
-                        .setFooter({ text: '💬 Nutzer-Antwort' });
-
-                    await thread.send({ embeds: [responseEmbed] });
-
-                    await interaction.reply({
-                        content: '✅ Deine Antwort wurde erfolgreich gesendet!',
-                        ephemeral: true
-                    });
-                    return;
-                }
-            }
-
-            await interaction.reply({
-                content: '❌ Konnte den zugehörigen Thread nicht finden.',
-                ephemeral: true
-            });
-        } else if (interaction.isButton() && interaction.customId.startsWith('solved_help_')) {
-            const userId = interaction.customId.replace('solved_help_', '');
-
-            const modal = new ModalBuilder()
-                .setCustomId(`solved_help_modal_${userId}`)
-                .setTitle('Hilfe-Anfrage lösen');
-
-            const reasonInput = new TextInputBuilder()
-                .setCustomId('reason')
-                .setLabel('Grund für die Lösung')
-                .setStyle(TextInputStyle.Paragraph)
-                .setRequired(true);
-
-            modal.addComponents(
-                new ActionRowBuilder().addComponents(reasonInput)
-            );
-
-            await interaction.showModal(modal);
-        } else if (interaction.isModalSubmit()) {
-            if (interaction.customId === 'abmelden_config_modal') {
-                const channelId = interaction.fields.getTextInputValue('channel_id');
-                const roleId = interaction.fields.getTextInputValue('role_id');
-
-                // Verify channel exists
-                const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
-                if (!channel) {
-                    await interaction.reply({
-                        content: '❌ Der angegebene Channel wurde nicht gefunden!',
-                        ephemeral: true
-                    });
-                    return;
-                }
-
-                // Verify role exists
-                const role = await interaction.guild.roles.fetch(roleId).catch(() => null);
-                if (!role) {
-                    await interaction.reply({
-                        content: '❌ Die angegebene Rolle wurde nicht gefunden!',
-                        ephemeral: true
-                    });
-                    return;
-                }
-
-                db.setGuildConfig(interaction.guildId, {
-                    absenzeChannel: channelId,
-                    requiredRole: roleId
-                });
-
-                await interaction.reply({
-                    content: '✅ Konfiguration erfolgreich gespeichert!',
-                    ephemeral: true
-                });
-            } else if (interaction.customId === 'help_config_modal') {
-                const channelId = interaction.fields.getTextInputValue('help_channel_id');
-                const roleId = interaction.fields.getTextInputValue('help_role_id');
-
-                // Verify channel exists
-                const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
-                if (!channel) {
-                    await interaction.reply({
-                        content: '❌ Der angegebene Channel wurde nicht gefunden!',
-                        ephemeral: true
-                    });
-                    return;
-                }
-
-                // Verify role exists if provided
-                if (roleId) {
-                    const role = await interaction.guild.roles.fetch(roleId).catch(() => null);
-                    if (!role) {
-                        await interaction.reply({
-                            content: '❌ Die angegebene Ping-Rolle wurde nicht gefunden!',
-                            ephemeral: true
-                        });
-                        return;
-                    }
-                }
-
-                db.setGuildConfig(interaction.guildId, {
-                    helpChannel: channelId,
-                    helpPingRole: roleId || null
-                });
-
-                await interaction.reply({
-                    content: '✅ Konfiguration erfolgreich gespeichert!',
-                    ephemeral: true
-                });
-            } else if (interaction.customId === 'info_config_modal') {
-                const infoText = interaction.fields.getTextInputValue('info_text');
-
-                db.setGuildConfig(interaction.guildId, {
-                    infoText: infoText
-                });
-
-                await interaction.reply({
-                    content: '✅ Info-Text erfolgreich gespeichert!',
-                    ephemeral: true
-                });
-            }
         }
     } catch (error) {
         console.error('Error handling interaction:', error);
@@ -303,44 +256,43 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-// Thread message handler (REPLACEMENT)
+// Handle messages in help threads
 client.on('messageCreate', async message => {
     try {
         // Ignore bot messages and messages not in threads
         if (message.author.bot || !message.channel.isThread()) return;
 
         const thread = message.channel;
-        const parentMessage = await thread.fetchStarterMessage();
-        if (!parentMessage) return;
+        const starterMessage = await thread.fetchStarterMessage();
+        if (!starterMessage) return;
 
-        const embed = parentMessage.embeds[0];
+        const embed = starterMessage.embeds[0];
         console.log('Debug - Parent Message Embed:', JSON.stringify(embed, null, 2));
 
         // Check if this is a help thread
         if (!embed || !embed.description?.includes('Neue Hilfe-Anfrage')) return;
 
-        // Extract user ID from author URL
-        console.log('Debug - Embed Author:', embed.author);
-        const userId = embed.author?.url?.replace('user-id://', '');
-        console.log('Debug - Extracted User ID:', userId);
+        // Find user ID field in embed fields
+        const userIdField = embed.fields.find(field => field.name === '@user');
+        console.log('Debug - User ID Field:', userIdField);
 
-        if (!userId) {
-            console.log('Debug - No User ID found in embed');
+        if (!userIdField) {
+            console.log('Debug - No User ID field found in embed');
             await thread.send('⚠️ Konnte keine Benutzer-ID finden.');
             return;
         }
 
         try {
             // Get user directly by ID
-            console.log('Debug - Attempting to fetch user with ID:', userId);
-            const user = await client.users.fetch(userId);
+            console.log('Debug - Attempting to fetch user with ID:', userIdField.value);
+            const user = await client.users.fetch(userIdField.value);
             if (!user) {
-                console.log('Debug - Could not fetch user with ID:', userId);
+                console.log('Debug - Could not fetch user with ID:', userIdField.value);
                 await thread.send('⚠️ Konnte den Nutzer nicht finden.');
                 return;
             }
 
-            // Send DM to user
+            // Create DM embed
             const dmEmbed = new EmbedBuilder()
                 .setColor('#0099ff')
                 .setDescription('## ✉️ Neue Nachricht zu deiner Hilfe-Anfrage')
@@ -355,6 +307,7 @@ client.on('messageCreate', async message => {
                 .setTimestamp()
                 .setFooter({ text: '💬 Support-Nachricht' });
 
+            // Add reply button
             const row = new ActionRowBuilder()
                 .addComponents(
                     new ButtonBuilder()
@@ -365,7 +318,7 @@ client.on('messageCreate', async message => {
                 );
 
             console.log('Debug - Attempting to send DM to user:', user.username);
-            await user.send({ 
+            await user.send({
                 embeds: [dmEmbed],
                 components: [row]
             });
@@ -376,14 +329,11 @@ client.on('messageCreate', async message => {
             console.error('Error sending DM:', error);
             await thread.send('⚠️ Konnte die Nachricht nicht an den Nutzer senden. Möglicherweise sind seine DMs deaktiviert.');
         }
-
     } catch (error) {
         console.error('Error handling thread message:', error);
     }
 });
 
-
-// Improved error handling for login
 client.login(token).catch(error => {
     console.error('Failed to login:', error);
     process.exit(1);

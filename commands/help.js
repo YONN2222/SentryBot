@@ -32,21 +32,23 @@ module.exports = {
         const grund = interaction.options.getString('grund');
         const user = interaction.user;
 
-        const embed = new EmbedBuilder()
+        // Create help request embed
+        const helpEmbed = new EmbedBuilder()
             .setColor('#ff0000')
             .setDescription('## ❗ Neue Hilfe-Anfrage')
             .setAuthor({
                 name: user.username,
-                iconURL: user.displayAvatarURL(),
-                url: `user-id://${user.id}` // Store user ID in author URL
+                iconURL: user.displayAvatarURL()
             })
             .addFields(
                 { name: '📝 Problem', value: grund },
-                { name: '⚠️ Hinweis', value: 'Der Nutzer wird über DM benachrichtigt, wenn ein Team-Mitglied antwortet.' }
+                { name: '⚠️ Hinweis', value: 'Der Nutzer wird über DM benachrichtigt, wenn ein Team-Mitglied antwortet.' },
+                { name: '@user', value: user.id }
             )
             .setTimestamp()
             .setFooter({ text: '🆘 Hilfe-Anfrage erstellt' });
 
+        // Create "Mark as solved" button
         const row = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
@@ -56,25 +58,29 @@ module.exports = {
                     .setEmoji('✅')
             );
 
+        // Send initial message and mention support role if configured
         let content = '';
         if (guildConfig.helpPingRole) {
             content = `<@&${guildConfig.helpPingRole}>`;
         }
 
+        // Send help request and create thread
         const message = await channel.send({
             content,
-            embeds: [embed],
+            embeds: [helpEmbed],
             components: [row]
         });
 
-        // Thread erstellen
+        // Create thread for discussion
         const thread = await message.startThread({
             name: `Hilfe für ${user.username}`,
             autoArchiveDuration: 60,
         });
 
-        await thread.send('💬 Hier können Sie dem Nutzer eine Nachricht senden. Alle Nachrichten werden automatisch als DM weitergeleitet.');
+        // Send initial thread message
+        await thread.send('💬 Alle Nachrichten in diesem Thread werden automatisch an den Nutzer als DM weitergeleitet.');
 
+        // Confirm to user
         await interaction.reply({
             content: '✅ Deine Hilfe-Anfrage wurde erfolgreich erstellt!',
             ephemeral: true
