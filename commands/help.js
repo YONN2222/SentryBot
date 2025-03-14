@@ -1,5 +1,5 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const db = require('../config/jsonDB');
 
 module.exports = {
@@ -24,7 +24,7 @@ module.exports = {
         const channel = await interaction.guild.channels.fetch(guildConfig.helpChannel);
         if (!channel) {
             return await interaction.reply({
-                content: '❌ Der konfigurierte Hilfe-Channel wurde nicht gefunden.\nBitte einen Administrator bitten, den Channel neu zu konfigurieren.',
+                content: '❌ Der konfigurierte Channel wurde nicht gefunden.\nBitte einen Administrator bitten, den Channel neu zu konfigurieren.',
                 ephemeral: true
             });
         }
@@ -37,7 +37,8 @@ module.exports = {
             .setDescription('## ❗ Neue Hilfe-Anfrage')
             .setAuthor({
                 name: user.username,
-                iconURL: user.displayAvatarURL()
+                iconURL: user.displayAvatarURL(),
+                url: `user-id://${user.id}` // Store user ID in author URL
             })
             .addFields(
                 { name: '📝 Problem', value: grund },

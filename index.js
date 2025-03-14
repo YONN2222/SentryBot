@@ -123,24 +123,6 @@ client.on('interactionCreate', async interaction => {
                     ephemeral: true
                 });
             }
-        } else if (interaction.isButton() && interaction.customId.startsWith('solved_help_')) {
-            const userId = interaction.customId.replace('solved_help_', '');
-
-            const modal = new ModalBuilder()
-                .setCustomId(`solved_help_modal_${userId}`)
-                .setTitle('Hilfe-Anfrage lösen');
-
-            const reasonInput = new TextInputBuilder()
-                .setCustomId('reason')
-                .setLabel('Grund für die Lösung')
-                .setStyle(TextInputStyle.Paragraph)
-                .setRequired(true);
-
-            modal.addComponents(
-                new ActionRowBuilder().addComponents(reasonInput)
-            );
-
-            await interaction.showModal(modal);
         } else if (interaction.isButton() && interaction.customId.startsWith('help_reply_')) {
             const messageId = interaction.customId.replace('help_reply_', '');
 
@@ -173,7 +155,7 @@ client.on('interactionCreate', async interaction => {
                 if (!channel) continue;
 
                 // Search for the user's help thread
-                const threads = await channel.threads.fetch({ archived: true });
+                const threads = await channel.threads.fetch();
                 for (const [, thread] of threads) {
                     const starterMessage = await thread.fetchStarterMessage();
                     if (!starterMessage) continue;
@@ -210,6 +192,24 @@ client.on('interactionCreate', async interaction => {
                 content: '❌ Konnte den zugehörigen Thread nicht finden.',
                 ephemeral: true
             });
+        } else if (interaction.isButton() && interaction.customId.startsWith('solved_help_')) {
+            const userId = interaction.customId.replace('solved_help_', '');
+
+            const modal = new ModalBuilder()
+                .setCustomId(`solved_help_modal_${userId}`)
+                .setTitle('Hilfe-Anfrage lösen');
+
+            const reasonInput = new TextInputBuilder()
+                .setCustomId('reason')
+                .setLabel('Grund für die Lösung')
+                .setStyle(TextInputStyle.Paragraph)
+                .setRequired(true);
+
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(reasonInput)
+            );
+
+            await interaction.showModal(modal);
         } else if (interaction.isModalSubmit()) {
             if (interaction.customId === 'abmelden_config_modal') {
                 const channelId = interaction.fields.getTextInputValue('channel_id');
@@ -290,53 +290,7 @@ client.on('interactionCreate', async interaction => {
                     content: '✅ Info-Text erfolgreich gespeichert!',
                     ephemeral: true
                 });
-            } else if (interaction.customId.startsWith('help_reply_modal_')) {
-                const userId = interaction.customId.replace('help_reply_modal_', '');
-                const response = interaction.fields.getTextInputValue('response');
-
-                try {
-                    const user = await client.users.fetch(userId);
-                    const embed = new EmbedBuilder()
-                        .setColor('#00ff00')
-                        .setDescription('## ✉️ Antwort auf deine Hilfe-Anfrage')
-                        .addFields(
-                            { name: '📝 Antwort', value: response },
-                            { name: '👤 Team-Mitglied', value: interaction.user.username }
-                        )
-                        .setTimestamp()
-                        .setFooter({ text: '✅ Hilfe-Anfrage beantwortet' });
-
-                    await user.send({ embeds: [embed] });
-
-                    await interaction.reply({
-                        content: '✅ Antwort wurde erfolgreich an den Nutzer gesendet!',
-                        ephemeral: true
-                    });
-                } catch (error) {
-                    await interaction.reply({
-                        content: '❌ Konnte die Nachricht nicht an den Nutzer senden. Möglicherweise sind seine DMs deaktiviert.',
-                        ephemeral: true
-                    });
-                }
             }
-        } else if (interaction.isButton() && interaction.customId.startsWith('reply_help_')) {
-            const userId = interaction.customId.replace('reply_help_', '');
-
-            const modal = new ModalBuilder()
-                .setCustomId(`help_reply_modal_${userId}`)
-                .setTitle('Antwort verfassen');
-
-            const responseInput = new TextInputBuilder()
-                .setCustomId('response')
-                .setLabel('Deine Antwort')
-                .setStyle(TextInputStyle.Paragraph)
-                .setRequired(true);
-
-            modal.addComponents(
-                new ActionRowBuilder().addComponents(responseInput)
-            );
-
-            await interaction.showModal(modal);
         }
     } catch (error) {
         console.error('Error handling interaction:', error);
@@ -349,7 +303,7 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-// Thread message handler
+// Thread message handler (REPLACEMENT)
 client.on('messageCreate', async message => {
     try {
         // Ignore bot messages and messages not in threads
@@ -360,18 +314,28 @@ client.on('messageCreate', async message => {
         if (!parentMessage) return;
 
         const embed = parentMessage.embeds[0];
+        console.log('Debug - Parent Message Embed:', JSON.stringify(embed, null, 2));
+
+        // Check if this is a help thread
         if (!embed || !embed.description?.includes('Neue Hilfe-Anfrage')) return;
 
-        // Get user from the embed's author
-        const username = embed.author?.name;
-        if (!username) return;
+        // Extract user ID from author URL
+        console.log('Debug - Embed Author:', embed.author);
+        const userId = embed.author?.url?.replace('user-id://', '');
+        console.log('Debug - Extracted User ID:', userId);
+
+        if (!userId) {
+            console.log('Debug - No User ID found in embed');
+            await thread.send('⚠️ Konnte keine Benutzer-ID finden.');
+            return;
+        }
 
         try {
-            // Find the user in the guild members
-            const guild = message.guild;
-            const members = await guild.members.fetch();
-            const member = members.find(m => m.user.username === username);
-            if (!member) {
+            // Get user directly by ID
+            console.log('Debug - Attempting to fetch user with ID:', userId);
+            const user = await client.users.fetch(userId);
+            if (!user) {
+                console.log('Debug - Could not fetch user with ID:', userId);
                 await thread.send('⚠️ Konnte den Nutzer nicht finden.');
                 return;
             }
@@ -400,10 +364,13 @@ client.on('messageCreate', async message => {
                         .setEmoji('↩️')
                 );
 
-            await member.user.send({ 
+            console.log('Debug - Attempting to send DM to user:', user.username);
+            await user.send({ 
                 embeds: [dmEmbed],
                 components: [row]
             });
+
+            console.log('Debug - Successfully sent DM to user:', user.username);
 
         } catch (error) {
             console.error('Error sending DM:', error);
@@ -415,62 +382,6 @@ client.on('messageCreate', async message => {
     }
 });
 
-// DM handler for help responses
-client.on('messageCreate', async message => {
-    try {
-        // Only process DMs from non-bot users
-        if (!message.channel.isDMBased() || message.author.bot) return;
-
-        // Check if the last message in this DM was from the bot and was a help response
-        const messages = await message.channel.messages.fetch({ limit: 5 });
-        const lastBotMessage = messages.find(m => 
-            m.author.id === client.user.id && 
-            m.embeds[0]?.description?.includes('Neue Nachricht zu deiner Hilfe-Anfrage')
-        );
-
-        if (!lastBotMessage) return;
-
-        // Find all help threads
-        const guilds = client.guilds.cache;
-        for (const [, guild] of guilds) {
-            const config = db.getGuildConfig(guild.id);
-            if (!config.helpChannel) continue;
-
-            const channel = await guild.channels.fetch(config.helpChannel);
-            if (!channel) continue;
-
-            // Search for the user's help thread
-            const threads = await channel.threads.fetchActive();
-            for (const [, thread] of threads) {
-                const starterMessage = await thread.fetchStarterMessage();
-                if (!starterMessage) continue;
-                const embed = starterMessage.embeds[0];
-                if (!embed?.author?.name) continue;
-                if (embed.author.name !== message.author.username) continue;
-
-                // Send the response to the thread
-                const responseEmbed = new EmbedBuilder()
-                    .setColor('#0099ff')
-                    .setDescription('## ↩️ Antwort vom Nutzer')
-                    .setAuthor({
-                        name: message.author.username,
-                        iconURL: message.author.displayAvatarURL()
-                    })
-                    .addFields(
-                        { name: '📝 Nachricht', value: message.content },
-                        { name: '👤 Nutzer', value: message.author.username }
-                    )
-                    .setTimestamp()
-                    .setFooter({ text: '💬 Nutzer-Antwort' });
-
-                await thread.send({ embeds: [responseEmbed] });
-                return;
-            }
-        }
-    } catch (error) {
-        console.error('Error handling DM response:', error);
-    }
-});
 
 // Improved error handling for login
 client.login(token).catch(error => {
