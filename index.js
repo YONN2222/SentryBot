@@ -94,14 +94,14 @@ client.on('interactionCreate', async interaction => {
             // Durchsuche alle Server
             for (const [, guild] of guilds) {
                 const config = db.getGuildConfig(guild.id);
-                if (!config.helpChannel) continue;
+                if (!config.modules || !config.modules.includes('hilfe') || !config.helpChannel) continue;
 
                 const channel = await guild.channels.fetch(config.helpChannel);
                 if (!channel) continue;
 
                 console.log('Debug - Checking help channel in guild:', guild.name);
 
-                // Aktive und archivierte Threads durchsuchen
+                // Durchsuche aktive und archivierte Threads
                 const activeThreads = await channel.threads.fetchActive();
                 const archivedThreads = await channel.threads.fetchArchived();
                 const allThreads = [...activeThreads.threads.values(), ...archivedThreads.threads.values()];
@@ -117,19 +117,25 @@ client.on('interactionCreate', async interaction => {
                         }
 
                         const embed = starterMessage.embeds[0];
-                        if (!embed) {
-                            console.log('Debug - No embed found in starter message');
+                        if (!embed || !embed.description?.includes('Neue Hilfe-Anfrage')) {
+                            console.log('Debug - Not a help request thread');
                             continue;
                         }
 
-                        // Find user ID field in embed fields
+                        // Finde das Mitglied-Feld
                         const userIdField = embed.fields.find(field => field.name === 'Mitglied');
-                        console.log('Debug - User ID Field:', userIdField);
+                        if (!userIdField) {
+                            console.log('Debug - No user ID field found');
+                            continue;
+                        }
 
-                        if (!userIdField || !userIdField.value.includes(interaction.user.id)) {
-                            console.log('Debug - User ID mismatch or not found');
-                            console.log('Debug - Expected:', interaction.user.id);
-                            console.log('Debug - Found:', userIdField?.value);
+                        // Extrahiere die User-ID aus dem Mention-String
+                        const userId = userIdField.value.replace(/[<@>]/g, '');
+                        console.log('Debug - Thread user ID:', userId);
+                        console.log('Debug - Current user ID:', interaction.user.id);
+
+                        if (userId !== interaction.user.id) {
+                            console.log('Debug - User ID mismatch');
                             continue;
                         }
 
@@ -288,11 +294,11 @@ client.on('interactionCreate', async interaction => {
                     content: '✅ Konfiguration erfolgreich gespeichert!',
                     ephemeral: true
                 });
-            } else if (interaction.customId === 'setup_help_config_modal') {
+            } else if (interaction.customId === 'setup_hilfe_config_modal') {
                 const channelId = interaction.fields.getTextInputValue('help_channel_id');
                 const roleId = interaction.fields.getTextInputValue('help_role_id');
 
-                console.log('Debug - Validating help config:', { channelId, roleId });
+                console.log('Debug - Validating hilfe config:', { channelId, roleId });
 
                 // Verify channel exists
                 const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
@@ -318,7 +324,7 @@ client.on('interactionCreate', async interaction => {
                     }
                 }
 
-                console.log('Debug - Saving help config:', { channelId, roleId });
+                console.log('Debug - Saving hilfe config:', { channelId, roleId });
                 db.setGuildConfig(interaction.guildId, {
                     helpChannel: channelId,
                     helpPingRole: roleId || null
@@ -341,6 +347,10 @@ client.on('interactionCreate', async interaction => {
                     ephemeral: true
                 });
             }
+        }
+        // Handle messages in help threads
+        else if (interaction.isMessageComponent()) {
+          console.log("Message Component received");
         }
     } catch (error) {
         console.error('Error handling interaction:', error);
@@ -365,9 +375,6 @@ client.on('messageCreate', async message => {
         if (!starterMessage) return;
 
         const embed = starterMessage.embeds[0];
-        console.log('Debug - Parent Message Embed:', JSON.stringify(embed, null, 2));
-
-        // Check if this is a help thread
         if (!embed || !embed.description?.includes('Neue Hilfe-Anfrage')) return;
 
         // Find user ID field in embed fields

@@ -4,7 +4,7 @@ const db = require('../config/jsonDB');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('help')
+        .setName('hilfe')
         .setDescription('Erstelle eine Hilfe-Anfrage')
         .addStringOption(option =>
             option.setName('grund')
@@ -15,7 +15,7 @@ module.exports = {
         const guildConfig = db.getGuildConfig(interaction.guildId);
 
         // Prüfe ob das Modul aktiviert ist
-        if (!guildConfig.modules.includes('help')) {
+        if (!guildConfig.modules.includes('hilfe')) {
             return await interaction.reply({
                 content: '⚠️ Das Hilfe-Modul ist momentan deaktiviert.',
                 ephemeral: true

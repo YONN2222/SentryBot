@@ -34,7 +34,7 @@ module.exports = {
                         {
                             label: 'Hilfe',
                             description: 'Konfiguriere das Hilfe-Modul',
-                            value: 'help',
+                            value: 'hilfe',
                             emoji: '❓'
                         },
                         {
@@ -107,23 +107,23 @@ module.exports = {
                         });
                         break;
 
-                    case 'help':
+                    case 'hilfe':
                         const helpConfigButton = new ButtonBuilder()
-                            .setCustomId('setup_configure_help')
+                            .setCustomId('setup_configure_hilfe')
                             .setLabel('Konfigurieren')
                             .setStyle(ButtonStyle.Primary)
                             .setEmoji('⚙️');
 
                         const helpToggleButton = new ButtonBuilder()
-                            .setCustomId('setup_toggle_help')
-                            .setLabel(guildConfig.modules.includes('help') ? 'Deaktivieren' : 'Aktivieren')
-                            .setStyle(guildConfig.modules.includes('help') ? ButtonStyle.Danger : ButtonStyle.Success)
-                            .setEmoji(guildConfig.modules.includes('help') ? '🔴' : '🟢');
+                            .setCustomId('setup_toggle_hilfe')
+                            .setLabel(guildConfig.modules.includes('hilfe') ? 'Deaktivieren' : 'Aktivieren')
+                            .setStyle(guildConfig.modules.includes('hilfe') ? ButtonStyle.Danger : ButtonStyle.Success)
+                            .setEmoji(guildConfig.modules.includes('hilfe') ? '🔴' : '🟢');
 
                         const helpActionRow = new ActionRowBuilder().addComponents(helpConfigButton, helpToggleButton);
 
                         await i.update({
-                            content: `## ❓ Hilfe Modul (${guildConfig.modules.includes('help') ? '🟢 Aktiv' : '🔴 Inaktiv'})\nHier kannst du den Support-Channel und optional eine Ping-Rolle festlegen.`,
+                            content: `## ❓ Hilfe Modul (${guildConfig.modules.includes('hilfe') ? '🟢 Aktiv' : '🔴 Inaktiv'})\nHier kannst du den Support-Channel und optional eine Ping-Rolle festlegen.`,
                             components: [helpActionRow, backButton],
                         });
                         break;
@@ -181,10 +181,10 @@ module.exports = {
                 );
 
                 await i.showModal(modal);
-            } else if (i.customId === 'setup_configure_help') {
-                console.log('Debug - Opening help config modal');
+            } else if (i.customId === 'setup_configure_hilfe') {
+                console.log('Debug - Opening hilfe config modal');
                 const modal = new ModalBuilder()
-                    .setCustomId('setup_help_config_modal')
+                    .setCustomId('setup_hilfe_config_modal')
                     .setTitle('Hilfe Konfiguration');
 
                 const channelInput = new TextInputBuilder()
@@ -265,7 +265,7 @@ module.exports = {
 
                 let moduleEmoji = '📝';
                 let moduleDescription = 'Abmelden Modul';
-                if (moduleName === 'help') {
+                if (moduleName === 'hilfe') {
                     moduleEmoji = '❓';
                     moduleDescription = 'Hilfe Modul';
                 } else if (moduleName === 'info') {

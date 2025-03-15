@@ -3,7 +3,8 @@
     "absenzeChannel": "1336009812068274199",
     "requiredRole": "1336011232401948813",
     "modules": [
-      "abmelden"
+      "abmelden",
+      "help"
     ],
     "helpChannel": "1336009812068274199",
     "helpPingRole": "1336011232401948813",

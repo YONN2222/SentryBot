@@ -11,7 +11,7 @@ class MemoryDB {
         return this.storage.get(guildId) || {
             absenzeChannel: null,
             requiredRole: null,
-            modules: ['abmelden']
+            modules: ['abmelden', 'hilfe']
         };
     }
 }

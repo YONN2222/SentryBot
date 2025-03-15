@@ -56,7 +56,7 @@ class JsonDB {
             helpChannel: null,
             helpPingRole: null,
             infoText: null,
-            modules: ['abmelden']
+            modules: ['abmelden', 'hilfe']
         };
     }
 }
