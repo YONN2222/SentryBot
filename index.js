@@ -59,6 +59,7 @@ client.once('ready', () => {
 client.on('interactionCreate', async interaction => {
     try {
         if (interaction.isCommand()) {
+            console.log('Debug - Command executed:', interaction.commandName);
             const command = client.commands.get(interaction.commandName);
             if (!command) return;
             await command.execute(interaction);
@@ -121,11 +122,11 @@ client.on('interactionCreate', async interaction => {
                             continue;
                         }
 
-                        // Finde das @user Feld
-                        const userIdField = embed.fields.find(f => f.name === '@user');
-                        console.log('Debug - Found user ID field:', userIdField);
+                        // Find user ID field in embed fields
+                        const userIdField = embed.fields.find(field => field.name === 'Mitglied');
+                        console.log('Debug - User ID Field:', userIdField);
 
-                        if (!userIdField || userIdField.value !== interaction.user.id) {
+                        if (!userIdField || !userIdField.value.includes(interaction.user.id)) {
                             console.log('Debug - User ID mismatch or not found');
                             console.log('Debug - Expected:', interaction.user.id);
                             console.log('Debug - Found:', userIdField?.value);
@@ -203,7 +204,7 @@ client.on('interactionCreate', async interaction => {
                     .setDescription('## ✅ Deine Hilfe-Anfrage wurde gelöst')
                     .addFields(
                         { name: '📝 Grund', value: reason },
-                        { name: '👤 Team-Mitglied', value: interaction.user.username }
+                        { name: '👤 Team-Mitglied', value: `<@${interaction.user.id}>` }
                     )
                     .setTimestamp()
                     .setFooter({ text: '✅ Hilfe-Anfrage gelöst' });
@@ -217,7 +218,7 @@ client.on('interactionCreate', async interaction => {
                 originalEmbed.data.color = 0x00ff00;
                 originalEmbed.data.fields.push({
                     name: '✨ Lösung',
-                    value: `Gelöst von ${interaction.user.username}\nGrund: ${reason}`
+                    value: `Gelöst von <@${interaction.user.id}>\nGrund: ${reason}`
                 });
 
                 await message.edit({
@@ -228,7 +229,7 @@ client.on('interactionCreate', async interaction => {
                 const thread = message.thread;
                 if (thread) {
                     await thread.send({
-                        content: `✅ Diese Hilfe-Anfrage wurde von ${interaction.user.username} als gelöst markiert.\nGrund: ${reason}`
+                        content: `✅ Diese Hilfe-Anfrage wurde von <@${interaction.user.id}> als gelöst markiert.\nGrund: ${reason}`
                     });
                     await thread.setArchived(true);
                 }
@@ -245,13 +246,110 @@ client.on('interactionCreate', async interaction => {
                 });
             }
         }
+        // Handle modal submissions for setup configuration
+        else if (interaction.isModalSubmit()) {
+            console.log('Debug - Modal submit received:', interaction.customId);
+
+            if (interaction.customId === 'setup_abmelden_config_modal') {
+                const channelId = interaction.fields.getTextInputValue('channel_id');
+                const roleId = interaction.fields.getTextInputValue('role_id');
+
+                console.log('Debug - Validating abmelden config:', { channelId, roleId });
+
+                // Verify channel exists
+                const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
+                if (!channel) {
+                    console.log('Debug - Channel not found:', channelId);
+                    await interaction.reply({
+                        content: '❌ Der angegebene Channel wurde nicht gefunden!',
+                        ephemeral: true
+                    });
+                    return;
+                }
+
+                // Verify role exists
+                const role = await interaction.guild.roles.fetch(roleId).catch(() => null);
+                if (!role) {
+                    console.log('Debug - Role not found:', roleId);
+                    await interaction.reply({
+                        content: '❌ Die angegebene Rolle wurde nicht gefunden!',
+                        ephemeral: true
+                    });
+                    return;
+                }
+
+                console.log('Debug - Saving abmelden config:', { channelId, roleId });
+                db.setGuildConfig(interaction.guildId, {
+                    absenzeChannel: channelId,
+                    requiredRole: roleId
+                });
+
+                await interaction.reply({
+                    content: '✅ Konfiguration erfolgreich gespeichert!',
+                    ephemeral: true
+                });
+            } else if (interaction.customId === 'setup_help_config_modal') {
+                const channelId = interaction.fields.getTextInputValue('help_channel_id');
+                const roleId = interaction.fields.getTextInputValue('help_role_id');
+
+                console.log('Debug - Validating help config:', { channelId, roleId });
+
+                // Verify channel exists
+                const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
+                if (!channel) {
+                    console.log('Debug - Channel not found:', channelId);
+                    await interaction.reply({
+                        content: '❌ Der angegebene Channel wurde nicht gefunden!',
+                        ephemeral: true
+                    });
+                    return;
+                }
+
+                // Verify role exists if provided
+                if (roleId) {
+                    const role = await interaction.guild.roles.fetch(roleId).catch(() => null);
+                    if (!role) {
+                        console.log('Debug - Role not found:', roleId);
+                        await interaction.reply({
+                            content: '❌ Die angegebene Ping-Rolle wurde nicht gefunden!',
+                            ephemeral: true
+                        });
+                        return;
+                    }
+                }
+
+                console.log('Debug - Saving help config:', { channelId, roleId });
+                db.setGuildConfig(interaction.guildId, {
+                    helpChannel: channelId,
+                    helpPingRole: roleId || null
+                });
+
+                await interaction.reply({
+                    content: '✅ Konfiguration erfolgreich gespeichert!',
+                    ephemeral: true
+                });
+            } else if (interaction.customId === 'setup_info_config_modal') {
+                const infoText = interaction.fields.getTextInputValue('info_text');
+
+                console.log('Debug - Saving info config');
+                db.setGuildConfig(interaction.guildId, {
+                    infoText: infoText
+                });
+
+                await interaction.reply({
+                    content: '✅ Info-Text erfolgreich gespeichert!',
+                    ephemeral: true
+                });
+            }
+        }
     } catch (error) {
         console.error('Error handling interaction:', error);
+        console.error('Error stack:', error.stack);
         if (!interaction.replied && !interaction.deferred) {
             await interaction.reply({
                 content: '❌ Es gab einen Fehler bei der Ausführung des Befehls!',
                 ephemeral: true
-            }).catch(console.error);
+            });
         }
     }
 });
@@ -273,7 +371,7 @@ client.on('messageCreate', async message => {
         if (!embed || !embed.description?.includes('Neue Hilfe-Anfrage')) return;
 
         // Find user ID field in embed fields
-        const userIdField = embed.fields.find(field => field.name === '@user');
+        const userIdField = embed.fields.find(field => field.name === 'Mitglied');
         console.log('Debug - User ID Field:', userIdField);
 
         if (!userIdField) {
@@ -283,11 +381,12 @@ client.on('messageCreate', async message => {
         }
 
         try {
-            // Get user directly by ID
-            console.log('Debug - Attempting to fetch user with ID:', userIdField.value);
-            const user = await client.users.fetch(userIdField.value);
+            // Get user ID from mention string
+            const userId = userIdField.value.replace(/[<@>]/g, '');
+            console.log('Debug - Attempting to fetch user with ID:', userId);
+            const user = await client.users.fetch(userId);
             if (!user) {
-                console.log('Debug - Could not fetch user with ID:', userIdField.value);
+                console.log('Debug - Could not fetch user with ID:', userId);
                 await thread.send('⚠️ Konnte den Nutzer nicht finden.');
                 return;
             }
@@ -302,7 +401,7 @@ client.on('messageCreate', async message => {
                 })
                 .addFields(
                     { name: '📝 Nachricht', value: message.content },
-                    { name: '👤 Team-Mitglied', value: message.author.username }
+                    { name: '👤 Team-Mitglied', value: `<@${message.author.id}>` }
                 )
                 .setTimestamp()
                 .setFooter({ text: '💬 Support-Nachricht' });

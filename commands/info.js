@@ -10,6 +10,14 @@ module.exports = {
     async execute(interaction) {
         const guildConfig = db.getGuildConfig(interaction.guildId);
 
+        // Prüfe ob das Modul aktiviert ist
+        if (!guildConfig.modules.includes('info')) {
+            return await interaction.reply({
+                content: '⚠️ Das Info-Modul ist momentan deaktiviert.',
+                ephemeral: true
+            });
+        }
+
         if (!guildConfig.infoText) {
             return await interaction.reply({
                 content: '⚠️ Es wurde noch kein Info-Text konfiguriert.\nBitte einen Administrator `/setup` ausführen lassen.',
@@ -24,7 +32,8 @@ module.exports = {
             .setFooter({ text: 'ℹ️ Server Information' });
 
         await interaction.reply({
-            embeds: [embed]
+            embeds: [embed],
+            ephemeral: true
         });
     },
 };

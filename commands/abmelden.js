@@ -23,6 +23,14 @@ module.exports = {
     async execute(interaction) {
         const guildConfig = db.getGuildConfig(interaction.guildId);
 
+        // Prüfe ob das Modul aktiviert ist
+        if (!guildConfig.modules.includes('abmelden')) {
+            return await interaction.reply({
+                content: '⚠️ Das Abmelde-Modul ist momentan deaktiviert.',
+                ephemeral: true
+            });
+        }
+
         // Check permissions
         if (!await checkPermissions(interaction, guildConfig.requiredRole)) {
             return await interaction.reply({

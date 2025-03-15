@@ -14,6 +14,14 @@ module.exports = {
     async execute(interaction) {
         const guildConfig = db.getGuildConfig(interaction.guildId);
 
+        // Prüfe ob das Modul aktiviert ist
+        if (!guildConfig.modules.includes('help')) {
+            return await interaction.reply({
+                content: '⚠️ Das Hilfe-Modul ist momentan deaktiviert.',
+                ephemeral: true
+            });
+        }
+
         if (!guildConfig.helpChannel) {
             return await interaction.reply({
                 content: '⚠️ Der Hilfe-Channel wurde noch nicht konfiguriert.\nBitte einen Administrator `/setup` ausführen lassen.',
@@ -43,7 +51,7 @@ module.exports = {
             .addFields(
                 { name: '📝 Problem', value: grund },
                 { name: '⚠️ Hinweis', value: 'Der Nutzer wird über DM benachrichtigt, wenn ein Team-Mitglied antwortet.' },
-                { name: '@user', value: user.id }
+                { name: 'Mitglied', value: `<@${user.id}>` }
             )
             .setTimestamp()
             .setFooter({ text: '🆘 Hilfe-Anfrage erstellt' });
