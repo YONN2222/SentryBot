@@ -9,5 +9,17 @@
     "helpChannel": "1336009812068274199",
     "helpPingRole": "1336011232401948813",
     "infoText": ""
+  },
+  "1066312975964721154": {
+    "absenzeChannel": null,
+    "requiredRole": null,
+    "helpChannel": null,
+    "helpPingRole": null,
+    "infoText": "Dies ist ein Test",
+    "modules": [
+      "abmelden",
+      "hilfe",
+      "info"
+    ]
   }
 }
